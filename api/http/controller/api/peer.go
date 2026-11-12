@@ -41,6 +41,12 @@ func (p *Peer) SysInfo(c *gin.Context) {
 			return
 		}
 	} else {
+		// The record belongs to the device that created it. Without this check
+		// anyone who knows an ID could overwrite the record and re-bind it.
+		if pe.Uuid != "" && pe.Uuid != f.Uuid {
+			c.String(http.StatusForbidden, "UUID_MISMATCH")
+			return
+		}
 		if pe.UserId == 0 {
 			pe.UserId = service.AllService.UserService.FindLatestUserIdFromLoginLogByUuid(pe.Uuid, pe.Id)
 		}

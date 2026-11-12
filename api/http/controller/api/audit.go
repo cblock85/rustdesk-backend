@@ -13,6 +13,17 @@ import (
 type Audit struct {
 }
 
+// knownDevice reports whether id is a registered device and uuid is the one it
+// registered with. Audit logs are sent without a login, so this is what stops
+// anyone on the internet from writing fake entries.
+func knownDevice(id, uuid string) bool {
+	if id == "" || uuid == "" {
+		return false
+	}
+	pe := service.AllService.PeerService.FindById(id)
+	return pe.RowId != 0 && pe.Uuid == uuid
+}
+
 // AuditConn
 // @Tags 审计
 // @Summary 审计连接
@@ -33,6 +44,10 @@ func (a *Audit) AuditConn(c *gin.Context) {
 	/*ttt := &gin.H{}
 	c.ShouldBindBodyWith(ttt, binding.JSON)
 	fmt.Println(ttt)*/
+	if !knownDevice(af.Id, af.Uuid) {
+		response.Success(c, "")
+		return
+	}
 	ac := af.ToAuditConn()
 	if af.Action == model.AuditActionNew {
 		service.AllService.AuditService.CreateAuditConn(ac)
@@ -78,6 +93,10 @@ func (a *Audit) AuditFile(c *gin.Context) {
 	//ttt := &gin.H{}
 	//c.ShouldBindBodyWith(ttt, binding.JSON)
 	//fmt.Println(ttt)
+	if !knownDevice(aff.Id, aff.Uuid) {
+		response.Success(c, "")
+		return
+	}
 	af := aff.ToAuditFile()
 	service.AllService.AuditService.CreateAuditFile(af)
 	response.Success(c, "")

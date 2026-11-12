@@ -56,7 +56,8 @@ func Init(g *gin.Engine) {
 
 func RustdeskCmdBind(adg *gin.RouterGroup) {
 	cont := &admin.Rustdesk{}
-	rg := adg.Group("/rustdesk")
+	// Server commands can switch login enforcement off, so they are admin only.
+	rg := adg.Group("/rustdesk").Use(middleware.AdminPrivilege())
 	rg.POST("/sendCmd", cont.SendCmd)
 	rg.GET("/cmdList", cont.CmdList)
 	rg.POST("/cmdDelete", cont.CmdDelete)
