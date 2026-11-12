@@ -223,6 +223,11 @@ impl RendezvousServer {
             MUST_LOGIN.store(true, Ordering::SeqCst);
         }
 
+        if MUST_LOGIN.load(Ordering::SeqCst) && jwt::SECRET.is_empty() {
+            log::error!(
+                "MUST_LOGIN is on but RUSTDESK_API_JWT_KEY is empty: tokens cannot be verified, so all connection requests will be refused"
+            );
+        }
         log::info!(
             "MUST_LOGIN={}",
             if MUST_LOGIN.load(Ordering::SeqCst) {
@@ -529,6 +534,20 @@ impl RendezvousServer {
                     return true;
                 }
                 Some(rendezvous_message::Union::RequestRelay(mut rf)) => {
+                    // Login enforcement must cover relay requests too, otherwise a
+                    // client can skip the punch-hole request and reach any peer
+                    // without a token.
+                    if let Some(reason) = Self::login_refusal(&rf.token) {
+                        let mut msg_out = RendezvousMessage::new();
+                        msg_out.set_relay_response(RelayResponse {
+                            refuse_reason: reason.to_owned(),
+                            ..Default::default()
+                        });
+                        Self::send_to_sink(sink, msg_out).await;
+                        return true;
+                    }
+                    // Never hand the caller's access token to the remote peer.
+                    rf.token = Default::default();
                     // there maybe several attempt, so sink can be none
                     if let Some(sink) = sink.take() {
                         self.tcp_punch.lock().await.insert(try_into_v4(addr), sink);
@@ -882,6 +901,27 @@ impl RendezvousServer {
     }
 
     #[inline]
+    /// When login enforcement is on, returns the reason a connection attempt
+    /// carrying `token` must be refused. Returns `None` when it may proceed.
+    ///
+    /// Fails closed: if login is required but no JWT key is configured, tokens
+    /// cannot be verified, so every attempt is refused.
+    fn login_refusal(token: &str) -> Option<&'static str> {
+        if !MUST_LOGIN.load(Ordering::SeqCst) {
+            return None;
+        }
+        if token.is_empty() {
+            return Some("Connection failed, please login!");
+        }
+        if jwt::SECRET.is_empty() {
+            return Some("Server misconfigured: login is required but no JWT key is set");
+        }
+        if jwt::verify_token(token).is_err() {
+            return Some("Token error, please log out and log back in!");
+        }
+        None
+    }
+
     async fn handle_punch_hole_request(
         &mut self,
         addr: SocketAddr,
@@ -898,28 +938,13 @@ impl RendezvousServer {
             });
             return Ok((msg_out, None));
         }
-        // if secret is not empty check token by jwt
-        if MUST_LOGIN.load(Ordering::SeqCst) {
-            if ph.token.is_empty() {
-                let mut msg_out = RendezvousMessage::new();
-                msg_out.set_punch_hole_response(PunchHoleResponse {
-                    other_failure: String::from("Connection failed, please login!"),
-                    ..Default::default()
-                });
-                return Ok((msg_out, None));
-            } else if !jwt::SECRET.is_empty() {
-                let token = ph.token;
-                let token = jwt::verify_token(token.as_str());
-                if token.is_err() {
-                    let mut msg_out = RendezvousMessage::new();
-                    msg_out.set_punch_hole_response(PunchHoleResponse {
-                        //提示重新登录
-                        other_failure: String::from("Token error, please log out and log back in!"),
-                        ..Default::default()
-                    });
-                    return Ok((msg_out, None));
-                }
-            }
+        if let Some(reason) = Self::login_refusal(&ph.token) {
+            let mut msg_out = RendezvousMessage::new();
+            msg_out.set_punch_hole_response(PunchHoleResponse {
+                other_failure: reason.to_owned(),
+                ..Default::default()
+            });
+            return Ok((msg_out, None));
         }
         let id = ph.id;
         // punch hole request from A, relay to B,
@@ -1617,5 +1642,29 @@ fn get_symetric_key_from_msg(
             key_array
         }
         Err(e) => panic!("Error while opening the seal key{:?}", e),
+    }
+}
+
+#[cfg(test)]
+mod login_enforcement_tests {
+    use super::*;
+
+    // One test function on purpose: MUST_LOGIN and the JWT key are process-wide.
+    #[test]
+    fn relay_and_punch_hole_share_the_same_login_rule() {
+        std::env::set_var("RUSTDESK_API_JWT_KEY", "unit-test-key");
+        let good = jwt::generate_token(1, 60).unwrap();
+        let expired = jwt::generate_token(1, -60).unwrap();
+
+        MUST_LOGIN.store(false, Ordering::SeqCst);
+        assert!(RendezvousServer::login_refusal("").is_none());
+
+        MUST_LOGIN.store(true, Ordering::SeqCst);
+        assert!(RendezvousServer::login_refusal("").is_some());
+        assert!(RendezvousServer::login_refusal("not-a-jwt").is_some());
+        assert!(RendezvousServer::login_refusal(&expired).is_some());
+        assert!(RendezvousServer::login_refusal(&good).is_none());
+
+        MUST_LOGIN.store(false, Ordering::SeqCst);
     }
 }
