@@ -58,6 +58,45 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag
             type=sha
+      - name: Build image for the smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: rustdesk-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test - all services start and the API answers
+        run: |
+          docker run -d --name rd --network host \
+            -e RELAY=127.0.0.1:21117 -e ENCRYPTED_ONLY=1 -e MUST_LOGIN=Y \
+            -e RUSTDESK_API_JWT_KEY=ci-test-key -e RUSTDESK_API_LANG=en \
+            rustdesk-backend:ci
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:21114/api/version; then ok=1; break; fi
+            sleep 2
+          done
+          echo
+          docker logs rd 2>&1 | tail -60
+          test "$ok" = 1
+          # ID server (21116) and relay (21117) are listening
+          (echo > /dev/tcp/127.0.0.1/21116) && (echo > /dev/tcp/127.0.0.1/21117)
+          # admin panel is served
+          curl -fsS -o /dev/null http://127.0.0.1:21114/_admin/
+          # server commands need a login
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:21114/api/admin/rustdesk/cmdList)
+          echo "cmdList without login: $code"
+          # a device record cannot be overwritten with a different uuid
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d '{"id":"123456789","uuid":"device-a","hostname":"first","os":"x","username":"u","version":"1","cpu":"c","memory":"m"}' \
+            http://127.0.0.1:21114/api/sysinfo; echo
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            -d '{"id":"123456789","uuid":"attacker","hostname":"hijacked","os":"x","username":"u","version":"1","cpu":"c","memory":"m"}' \
+            http://127.0.0.1:21114/api/sysinfo)
+          echo "sysinfo overwrite with wrong uuid: $code"
+          test "$code" = 403
+          docker rm -f rd
       - uses: docker/build-push-action@v6
         with:
           context: .

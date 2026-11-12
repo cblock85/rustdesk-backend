@@ -47,7 +47,7 @@ COPY api/resources /app/resources
 COPY api/docs /app/docs
 COPY api/conf /app/conf
 COPY --from=web /src/dist /app/resources/admin
-RUN chmod +x /usr/bin/healthcheck.sh \
+RUN chmod +x /usr/bin/healthcheck.sh /etc/s6-overlay/s6-rc.d/*/run \
  && echo "/package/admin/s6/command/s6-svstat /run/s6-rc/servicedirs/api || exit 1" >> /usr/bin/healthcheck.sh
 
 ENV RELAY=relay.example.com \
