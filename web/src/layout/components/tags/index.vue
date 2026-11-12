@@ -12,7 +12,7 @@
 </template>
 
 <script>
-  import { defineComponent, ref, onMounted, watch } from 'vue'
+  import { defineComponent, ref, onMounted, watch, nextTick } from 'vue'
   import { useTagsStore } from '@/store/tags'
   import { useRoute, useRouter } from 'vue-router'
   import { T } from '@/utils/i18n'
@@ -55,9 +55,23 @@
         }
       }
 
-      onMounted(init)
+      // Keep the active tab visible when the bar is scrolled.
+      const showActiveTag = () => {
+        nextTick(() => {
+          const el = document.querySelector('.header-tags .el-tag--dark')
+          if (el) {
+            el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+          }
+        })
+      }
+
+      onMounted(() => {
+        init()
+        showActiveTag()
+      })
       watch(route, (val) => {
         addTag(val)
+        showActiveTag()
       })
       return {
         tags,

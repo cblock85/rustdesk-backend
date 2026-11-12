@@ -56,7 +56,16 @@
   height: auto;
   border-bottom: 1px solid #eee;
   display: flex;
+  flex-wrap: nowrap;
   padding: 0;
+  /* Many open tabs scroll inside the bar instead of widening the page. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+
+  :deep(.el-tag) {
+    flex: 0 0 auto;
+  }
 }
 
 .app-left {
@@ -65,6 +74,9 @@
 
 .app-container {
   min-height: 100vh;
+  /* Let this column shrink to the window; without it wide content pushes
+     the header and page past the right edge. */
+  min-width: 0;
 }
 </style>
 
