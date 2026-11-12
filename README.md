@@ -9,6 +9,12 @@ projects, which are no longer updated, with fixes for the security problems
 listed in [docs/CHANGES.md](docs/CHANGES.md). See [NOTICE.md](NOTICE.md) for
 attribution and licenses.
 
+## Status
+
+Early. The code builds and its tests pass, but the changes have had little
+real-world use so far. Try it on a test server before you rely on it, and
+please report what you find.
+
 ## What you get
 
 - **ID and relay servers** (`hbbs`, `hbbr`) for RustDesk clients.
