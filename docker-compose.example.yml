@@ -1,0 +1,28 @@
+# Copy to docker-compose.yml, copy .env.example to .env, then: docker compose up -d
+services:
+  rustdesk:
+    container_name: rustdesk
+    image: ghcr.io/OWNER/rustdesk-backend:latest   # replace OWNER, or use `build: .`
+    network_mode: host
+    environment:
+      - RELAY=${SERVER_HOST}:21117
+      - ENCRYPTED_ONLY=1
+      # Y = only logged-in clients may start a connection. Needs JWT_KEY.
+      - MUST_LOGIN=Y
+      - TZ=${TZ}
+      - RUSTDESK_API_LANG=en
+      - RUSTDESK_API_RUSTDESK_ID_SERVER=${SERVER_HOST}:21116
+      - RUSTDESK_API_RUSTDESK_RELAY_SERVER=${SERVER_HOST}:21117
+      - RUSTDESK_API_RUSTDESK_API_SERVER=https://${SERVER_HOST}
+      - RUSTDESK_API_RUSTDESK_KEY_FILE=/data/id_ed25519.pub
+      - RUSTDESK_API_JWT_KEY=${JWT_KEY}
+      # Only believe X-Forwarded-For from the reverse proxy on this machine.
+      - RUSTDESK_API_GIN_TRUST_PROXY=127.0.0.1
+      # Ban an address for 30 minutes after this many failed logins in 10 minutes.
+      - RUSTDESK_API_APP_BAN_THRESHOLD=10
+      # Keep the API off the public interface; the reverse proxy reaches it locally.
+      - RUSTDESK_API_GIN_API_ADDR=127.0.0.1:21114
+    volumes:
+      - ./data:/data          # server key pair and peer database
+      - ./api-data:/app/data  # users, devices, logs
+    restart: unless-stopped

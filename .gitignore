@@ -1,0 +1,9 @@
+.env
+/data/
+/api-data/
+**/node_modules/
+web/dist/
+api/resources/admin/
+api/release/
+api/go.sum
+.DS_Store
